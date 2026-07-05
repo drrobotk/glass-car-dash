@@ -7,7 +7,11 @@ import type { Runtime, RawLocation } from './even.ts'
 import { lookupDrivingInfo, haversineMeters, type LimitSource } from './osm.ts'
 
 const MOVE_THRESHOLD_M = 120 // within the designed 100-150m range
-const LOOKUP_TIMEOUT_MS = 30_000
+// Tightened from 30s so the limit visibly refreshes "every few seconds"
+// while driving, not just when a new road segment is reached — the
+// move-based trigger already covers highway speeds (120m passes in under
+// 8s above ~35km/h anyway), this mainly matters at low speed/idling.
+const LOOKUP_TIMEOUT_MS = 8_000
 const MPS_TO_MPH = 2.23694
 const METERS_TO_MILES = 1 / 1609.34
 
