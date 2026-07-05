@@ -1,0 +1,11 @@
+{
+  "name": "glass-car-dash-backend",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "ADB-driven media remote (play/pause/next/previous) for the Glass Car Dash G2 app",
+  "scripts": {
+    "dev": "node --env-file=.env server.js",
+    "start": "node server.js"
+  }
+}
