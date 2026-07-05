@@ -1,5 +1,7 @@
 # Glass Car Dash — a driving dashboard + media remote for the Even Realities G2
 
+![Glass Car Dash](docs/store/hero.png)
+
 One screen, split in two: your media remote on the left, a live driving
 dashboard on the right — current speed, local speed limit shown as a
 circular road-sign graphic (from your phone's GPS + the OSM Overpass API),
@@ -17,7 +19,10 @@ anything.
 - **Swipe down** = previous track
 - **Double-tap** = exit
 
-![Glass Car Dash dashboard](docs/store/screenshot-dashboard.png)
+Actual on-device UI (captured from the official Even Hub simulator, not a
+mockup):
+
+<img src="docs/store/screenshot-dashboard.png" width="400" alt="Glass Car Dash dashboard"> <img src="docs/store/screenshot-camera-warning.png" width="400" alt="Glass Car Dash camera warning">
 
 ## How it works
 
@@ -90,13 +95,16 @@ automated); follow them, then re-run the same command above to finish,
 including the Termux:Boot install, which needs that adb connection to work.
 Safe to re-run any number of times either way.
 
-Then:
+Then, install the glasses app itself:
 
-1. Upload `glass-car-dash.ehpk` (from this repo's
-   [Releases](https://github.com/drrobotk/glass-car-dash/releases)) at
-   <https://hub.evenrealities.com> (Developer hub).
-2. On your phone: **Even app → Developer hub → unpublished plugins → Glass
-   Car Dash**.
+- **If Glass Car Dash is listed on the Even Hub store:** open the Even app
+  on your phone, search "Glass Car Dash", tap Install. Done — skip the rest
+  of this step.
+- **Otherwise** (not published yet, or you want an unreleased/dev build):
+  upload `glass-car-dash.ehpk` (from this repo's
+  [Releases](https://github.com/drrobotk/glass-car-dash/releases)) at
+  <https://hub.evenrealities.com> (Developer hub), then on your phone:
+  **Even app → Developer hub → unpublished plugins → Glass Car Dash**.
 
 That's it. Everything below is the same process broken into manual steps —
 useful if you want to understand or customize each one, or if something
@@ -233,10 +241,14 @@ reboot on its own — see the persistence section below for that.
 
 ## 7. Install the Glass Car Dash app
 
-Upload `glass-car-dash.ehpk` at <https://hub.evenrealities.com> (Developer
-hub), then on your phone: **Even app → Developer hub → unpublished plugins
-→ Glass Car Dash**. It calls `127.0.0.1:8790` directly — no QR code needed,
-since the app and backend are the same device.
+**If it's listed on the Even Hub store**, just search "Glass Car Dash" in
+the Even app and tap Install — skip the rest of this step.
+
+Otherwise: upload `glass-car-dash.ehpk` at <https://hub.evenrealities.com>
+(Developer hub), then on your phone: **Even app → Developer hub →
+unpublished plugins → Glass Car Dash**. Either way, it calls
+`127.0.0.1:8790` directly — no QR code needed, since the app and backend
+are the same device.
 
 > If you're building this yourself rather than using a pre-built `.ehpk`,
 > make sure `app/.env.production` has the same key you set in step 5:

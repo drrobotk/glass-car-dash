@@ -19,50 +19,59 @@ Already set (checklist shows a checkmark) — no action needed.
 
 ## 3. Cover and screenshots
 
-Two screenshots are in this folder, captured from the **official
-`@evenrealities/evenhub-simulator`** (its `/api/screenshot/glasses`
-automation endpoint — the actual 576×288 glasses framebuffer render, not a
-browser approximation) so they match real hardware rendering:
+Three images are in this folder:
 
-- [`screenshot-dashboard.png`](screenshot-dashboard.png) — main view: current
-  speed (42 mph), the circular speed-limit sign (30), heading (NE). **Use
-  this as the cover image.**
-- [`screenshot-camera-warning.png`](screenshot-camera-warning.png) — same
-  view with a speed camera proximity warning showing (▲ 240m) instead of
-  heading, demonstrating that feature.
+- [`hero.png`](hero.png) — stylized cover/marketing image: the HUD overlaid
+  on an illustrated night-driving scene, in the style of other Even Hub
+  store listings (e.g. Navigaze). **Use this as the cover image.** It's a
+  mockup, not a device capture — built to sell the concept at a glance, the
+  same way an app icon or a feature graphic isn't a literal screenshot
+  either.
+- [`screenshot-dashboard.png`](screenshot-dashboard.png) and
+  [`screenshot-camera-warning.png`](screenshot-camera-warning.png) — actual
+  on-device UI, captured from the **official
+  `@evenrealities/evenhub-simulator`** (its `/api/screenshot/glasses`
+  automation endpoint — the real 576×288 glasses framebuffer render, not a
+  browser approximation). Use these as the supporting screenshots, so the
+  listing shows both the pitch (hero) and the real thing (these two).
 
-The numbers shown are placeholder demo values set temporarily for the
-screenshot (the real app starts with everything blank/pending until GPS and
-the Overpass lookup return real data) — not a live capture, since the
-simulator doesn't implement the SDK's location APIs (confirmed via its
-console log: `unknown variant 'startAppLocationUpdates'`).
+All three use placeholder demo values (42 mph, limit 30, heading NE / a
+240m camera warning) set temporarily for the captures — the real app starts
+blank/pending until GPS and the Overpass lookup return real data, and the
+simulator can't produce that itself (its console log shows
+`unknown variant 'startAppLocationUpdates'` — it doesn't implement the
+SDK's location APIs).
 
 ## 4. App description
 
 **Short/tagline** (matches `app.json`'s `tagline`, 80 char limit):
 > Speed, limit, camera warnings, media — tap to play/pause, swipe to skip
 
-**Full description** (matches `app.json`'s `description`):
-> A driving dashboard for the Even Realities G2: current speed, local speed
-> limit shown as a circular road-sign graphic, heading and speed camera
-> proximity, alongside a media remote (tap to play/pause, scroll up for next
-> track, scroll down for previous track, double-tap to exit). Media control
-> is driven by your phone's own ADB (wireless debugging), routed through a
-> Termux backend — no media-app-specific integration needed, it works with
-> whatever's currently playing. Speed/limit data comes directly from your
-> phone's GPS and the OSM Overpass API.
+**Full description**, written in the punchy bold-feature-header style used
+by other Even Hub listings:
 
-If the hub's description field allows more room than `app.json`'s (which has
-no documented length cap, unlike some fields), this longer version adds
-useful setup context:
-
-> Everything runs on your own phone — nothing is sent to any server the
-> developer controls. GPS coordinates go directly to OpenStreetMap's public
-> Overpass API to look up the speed limit and nearby speed cameras for your
-> position; media commands go to a small backend you run yourself in Termux,
-> which only ever listens on `127.0.0.1` (the phone's own loopback). See the
-> [GitHub repo](https://github.com/drrobotk/glass-car-dash) for full setup
-> instructions — a single command in Termux installs and starts everything.
+> A driving dashboard and media remote for the Even Realities G2 — hands-free,
+> right in your view.
+>
+> **Speed and limit, always visible.** Your current speed and the local
+> speed limit — shown as a real circular road-sign graphic — sit on the
+> right side of the display, sourced live from OpenStreetMap as you drive.
+>
+> **Speed camera warnings.** Nearby fixed speed cameras surface
+> automatically, with distance, so there's no surprise.
+>
+> **Heading, at a glance.** A compass label shows which way you're facing
+> alongside your speed.
+>
+> **Hands-free media control.** Tap to play/pause, swipe up/down for
+> next/previous — works with whatever's playing (Spotify, YouTube Music,
+> podcasts, anything), no app-specific integration needed.
+>
+> **Free, open data, no accounts.** Works with no login and no API keys —
+> OpenStreetMap's public Overpass API for speed limits/cameras, and your own
+> phone's ADB for media control. Nothing is sent to any server the developer
+> controls. Full source and one-command setup at
+> [github.com/drrobotk/glass-car-dash](https://github.com/drrobotk/glass-car-dash).
 
 ## 5. Permissions
 
