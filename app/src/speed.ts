@@ -7,11 +7,14 @@ import type { Runtime, RawLocation } from './even.ts'
 import { lookupDrivingInfo, haversineMeters, type LimitSource } from './osm.ts'
 
 const MOVE_THRESHOLD_M = 120 // within the designed 100-150m range
-// Tightened from 30s so the limit visibly refreshes "every few seconds"
-// while driving, not just when a new road segment is reached — the
-// move-based trigger already covers highway speeds (120m passes in under
-// 8s above ~35km/h anyway), this mainly matters at low speed/idling.
-const LOOKUP_TIMEOUT_MS = 8_000
+// Empirically tested against the real overpass-api.de (real browser fetch,
+// not Node — see osm.ts's UA comment): 8s produced persistent HTTP 429s and
+// even a hung connection within 30s. 15s ran clean for a full 3-minute
+// trial, 12/12 requests succeeded (with latency ranging ~500ms-13s, so this
+// is a floor, not a comfortable margin — don't tighten further without
+// re-testing the same way). This mainly affects low-speed/idling cadence;
+// the move-based trigger already covers highway speeds.
+const LOOKUP_TIMEOUT_MS = 15_000
 const MPS_TO_MPH = 2.23694
 const METERS_TO_MILES = 1 / 1609.34
 

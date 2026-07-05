@@ -124,13 +124,27 @@ export function parseDrivingInfo(json: OverpassResponse, lat: number, lon: numbe
   }
 }
 
+const FETCH_TIMEOUT_MS = 15_000
+
 export async function lookupDrivingInfo(lat: number, lon: number): Promise<DrivingInfo> {
-  const res = await fetch(OVERPASS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'data=' + encodeURIComponent(buildOverpassQuery(lat, lon)),
-  })
-  if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`)
-  const json = (await res.json()) as OverpassResponse
-  return parseDrivingInfo(json, lat, lon)
+  // A hung connection (observed against the real API under heavy polling —
+  // Overpass can hold a request open with no response at all, not just
+  // reject fast) would otherwise never resolve this promise, permanently
+  // wedging startSpeedTracking's lookupInFlight guard and freezing the
+  // limit forever instead of just going stale for one cycle.
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+  try {
+    const res = await fetch(OVERPASS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'data=' + encodeURIComponent(buildOverpassQuery(lat, lon)),
+      signal: controller.signal,
+    })
+    if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`)
+    const json = (await res.json()) as OverpassResponse
+    return parseDrivingInfo(json, lat, lon)
+  } finally {
+    clearTimeout(timer)
+  }
 }
