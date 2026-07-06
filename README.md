@@ -334,6 +334,8 @@ a daily one.
 | Now-playing title never shows | Best-effort only — it's parsed from `adb shell dumpsys media_session`, an undocumented debug dump, not a stable API. Some apps don't publish session metadata, and the parsing may not match every Android version/OEM. The dashboard works fine without it |
 | Now-playing takes a while to update after next/previous | An extra check fires ~1s after a successful next/previous/play-pause tap (rather than waiting for the regular 20s poll) — if the target app is slow to publish new session metadata (buffering, etc.) it can still take a moment past that |
 | Artist shown twice, or not at all | The artist is only appended if it isn't already part of the title (some apps report "Artist - Title" as one field, others report title and artist separately) — this is a heuristic over an undocumented format, not exact for every app |
+| Speed limit stuck on "…" the whole drive | Overpass's public instance rate-limits under real use (confirmed live) — the app already tries two free mirrors as fallback before giving up, but if all three are down/rate-limited at once you'll see this. It should recover on its own as soon as any one of them responds |
+| "panel: sendFailed" briefly shown, then goes away | Expected occasionally — the dashboard image is pushed once a second over BLE, and a single failed send isn't shown (only 3+ in a row); this is just a transient wireless hiccup, not a bug |
 
 ## Debugging speed/limit accuracy
 
@@ -378,9 +380,11 @@ expect to need it for a while, if that matters to you.
 
 No accounts, no analytics, no data collected or stored by the developer.
 GPS coordinates go directly from your phone to OpenStreetMap's public
-Overpass API for speed limit/camera lookups; media commands, phone
-battery, and the now-playing track title all go through (or come from)
-your own backend on `127.0.0.1` and never leave the device. Full details
+Overpass API (or one of two mirrors, tried only if the primary is
+rate-limited/unavailable — all free, no accounts or API keys) for speed
+limit/camera lookups; media commands, phone battery, and the now-playing
+track title all go through (or come from) your own backend on
+`127.0.0.1` and never leave the device. Full details
 in [`docs/store/STORE_LISTING.md`](docs/store/STORE_LISTING.md).
 
 ## License

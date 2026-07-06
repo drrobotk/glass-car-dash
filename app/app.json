@@ -1,5 +1,5 @@
 {
-  "package_id": "com.usman.glassdashv12",
+  "package_id": "com.usman.glassdashv13",
   "edition": "202601",
   "name": "Glass Car Dash",
   "tagline": "Speed, limit, camera warnings, media — tap to play/pause, swipe to skip",
@@ -16,10 +16,12 @@
     },
     {
       "name": "network",
-      "desc": "Sends play/pause/skip commands to your own Glass Car Dash backend, and looks up speed limits and speed cameras from the OSM Overpass API.",
+      "desc": "Sends play/pause/skip commands to your own Glass Car Dash backend, and looks up speed limits and speed cameras from the OSM Overpass API (with two mirrors as fallback if the primary is rate-limited).",
       "whitelist": [
         "http://127.0.0.1:8790",
-        "https://overpass-api.de"
+        "https://overpass-api.de",
+        "https://maps.mail.ru",
+        "https://overpass.osm.ch"
       ]
     }
   ],

@@ -7,7 +7,20 @@
 // permissive, a real browser UA passes its anti-abuse filter with no
 // special headers, and this exact combined-query shape (ways + camera
 // nodes in one request) returns valid results.
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
+//
+// Free, keyless mirrors tried in order on failure — no single Overpass
+// instance is reliable enough alone: overpass-api.de is a shared public
+// resource that does rate-limit under real use (confirmed live: a 429
+// mid-session, then an 8s timeout on a later request in the same test).
+// maps.mail.ru's mirror was checked the same way and responded in ~470ms
+// with matching data while the primary was timing out; osm.ch responded
+// fast too but returned 0 elements for the same point (works, but its data
+// coverage is unproven, so it goes last).
+const OVERPASS_URLS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.osm.ch/api/interpreter',
+]
 const ROAD_RADIUS_M = 100
 const CAMERA_RADIUS_M = 1000
 
@@ -185,9 +198,12 @@ export function parseDrivingInfo(json: OverpassResponse, lat: number, lon: numbe
   }
 }
 
-const FETCH_TIMEOUT_MS = 15_000
+// Per-mirror, not overall — up to 3 mirrors get tried in sequence (see
+// OVERPASS_URLS), so this stays short enough that a full run through all of
+// them in the worst case (~24s) doesn't compound into an unreasonable wait.
+const FETCH_TIMEOUT_MS = 8_000
 
-export async function lookupDrivingInfo(lat: number, lon: number): Promise<DrivingInfo> {
+async function fetchFromOverpass(url: string, lat: number, lon: number): Promise<OverpassResponse> {
   // A hung connection (observed against the real API under heavy polling —
   // Overpass can hold a request open with no response at all, not just
   // reject fast) would otherwise never resolve this promise, permanently
@@ -196,16 +212,28 @@ export async function lookupDrivingInfo(lat: number, lon: number): Promise<Drivi
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
   try {
-    const res = await fetch(OVERPASS_URL, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: 'data=' + encodeURIComponent(buildOverpassQuery(lat, lon)),
       signal: controller.signal,
     })
     if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`)
-    const json = (await res.json()) as OverpassResponse
-    return parseDrivingInfo(json, lat, lon)
+    return (await res.json()) as OverpassResponse
   } finally {
     clearTimeout(timer)
   }
+}
+
+export async function lookupDrivingInfo(lat: number, lon: number): Promise<DrivingInfo> {
+  let lastError: unknown
+  for (const url of OVERPASS_URLS) {
+    try {
+      const json = await fetchFromOverpass(url, lat, lon)
+      return parseDrivingInfo(json, lat, lon)
+    } catch (e) {
+      lastError = e // try the next mirror
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('all Overpass mirrors failed')
 }

@@ -17,6 +17,12 @@ import type { MediaStatus, ActionResult, NowPlaying } from './types'
 const STATUS_REFRESH_MS = 20_000
 const LEFT_WRAP_WIDTH = 22
 const PANEL_PUSH_INTERVAL_MS = 1000 // driving info changes slowly enough that 1fps is plenty, and it's kinder to BLE bandwidth
+// A single "sendFailed" is an expected occasional BLE hiccup pushing an
+// image once a second over a wireless link, not a real problem — it still
+// works next tick. Only surface it in the footer once it's failed this many
+// times in a row, so a real stuck failure is still visible but a one-off
+// blip doesn't flash a scary message for no reason.
+const PANEL_FAIL_STREAK_THRESHOLD = 3
 
 const rt = new Runtime()
 
@@ -34,6 +40,7 @@ const state = {
   battery: { levelPct: null, charging: false } as BatteryState,
   phoneBattery: { levelPct: null, charging: false } as { levelPct: number | null; charging: boolean },
   panelResult: '', // last updateImageRawData result — the only diagnostic signal we get back for a bitmap push, per app-development.md's Sensorscope lesson
+  panelFailStreak: 0,
 }
 
 let rendering: Promise<unknown> = Promise.resolve()
@@ -110,9 +117,6 @@ function leftLines(): string[] {
 
   if (state.driving.roadName) lines.push(wrap(state.driving.roadName, LEFT_WRAP_WIDTH).split('\n')[0])
 
-  const pb = state.phoneBattery
-  if (pb.levelPct != null) lines.push(`Phone ${pb.levelPct}%${pb.charging ? '+' : ''}`)
-
   return lines
 }
 
@@ -121,10 +125,12 @@ async function render(): Promise<void> {
   const dot = connected === undefined ? '…' : connected ? '●' : '○'
   const header = F.padHeader('Glass Car Dash', `${dot}  ${batteryText()}`)
   const body = '\n  ' + leftLines().join('\n  ')
-  // Quiet unless something's wrong, same as the camera-warning line — a
-  // failed bitmap push is otherwise invisible (there's no glasses in front
-  // of the person writing the code, only this string comes back).
-  const footer = state.panelResult && state.panelResult !== 'success'
+  // Quiet unless something's persistently wrong, same as the camera-warning
+  // line — a failed bitmap push is otherwise invisible (there's no glasses
+  // in front of the person writing the code, only this string comes back).
+  // A single failure isn't shown: pushing an image once a second over BLE
+  // means an occasional "sendFailed" blip is expected, not a real problem.
+  const footer = state.panelFailStreak >= PANEL_FAIL_STREAK_THRESHOLD
     ? `panel: ${state.panelResult}`
     : '▶ tap · » up · « down · 2x exit'
   await rt.render(header, body, footer)
@@ -140,6 +146,7 @@ async function pushPanel(): Promise<void> {
   } catch (e: any) {
     state.panelResult = e?.message || 'push threw'
   } finally {
+    state.panelFailStreak = state.panelResult === 'success' ? 0 : state.panelFailStreak + 1
     panelPushing = false
     paint()
   }

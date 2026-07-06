@@ -74,7 +74,8 @@ by other Even Hub listings:
 > the header, so you know which one needs charging first.
 >
 > **Free, open data, no accounts.** Works with no login and no API keys —
-> OpenStreetMap's public Overpass API for speed limits/cameras, and your own
+> OpenStreetMap's public Overpass API (with automatic fallback to two free
+> mirrors if the primary is busy) for speed limits/cameras, and your own
 > phone's ADB for media control. Nothing is sent to any server the developer
 > controls. Full source and one-command setup at
 > [github.com/drrobotk/glass-car-dash](https://github.com/drrobotk/glass-car-dash).
@@ -86,7 +87,7 @@ Already set (checklist shows a checkmark) — declared in `app/app.json`:
 | Permission | Why |
 |---|---|
 | `location` | Reads current speed/heading and looks up the local speed limit for your position |
-| `network` (whitelist: `127.0.0.1:8790`, `overpass-api.de`) | Talks to your own Termux backend (media control) and the public OSM Overpass API (speed limit/camera lookups) |
+| `network` (whitelist: `127.0.0.1:8790`, `overpass-api.de`, `maps.mail.ru`, `overpass.osm.ch`) | Talks to your own Termux backend (media control) and the public OSM Overpass API — primary plus two free mirrors tried in order as fallback if the primary is rate-limited (confirmed this happens under real use) |
 
 ## 6. Privacy and terms
 
@@ -106,10 +107,12 @@ against the source, not boilerplate):
 >
 > 1. **Location lookups** — your device's GPS coordinates (latitude/
 >    longitude only) are sent directly from your phone to OpenStreetMap's
->    public Overpass API (`overpass-api.de`) to determine the local speed
->    limit and nearby speed cameras. This is a read-only public map query;
->    no identifying information accompanies it beyond the coordinates
->    themselves, and OSM's own privacy policy governs that request.
+>    public Overpass API (`overpass-api.de`, or one of two free mirrors —
+>    `maps.mail.ru`, `overpass.osm.ch` — tried in order only if the primary
+>    doesn't respond) to determine the local speed limit and nearby speed
+>    cameras. This is a read-only public map query; no identifying
+>    information accompanies it beyond the coordinates themselves, and each
+>    service's own privacy policy governs that request.
 > 2. **Media control** — play/pause/next/previous commands are sent to a
 >    backend that you run yourself, on your own phone, in Termux. It listens
 >    only on `127.0.0.1` (the phone's own loopback interface) — this traffic
