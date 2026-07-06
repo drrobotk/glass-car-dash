@@ -1,5 +1,10 @@
 import type { MediaStatus, ActionResult } from './types'
 
+export interface PhoneStatus {
+  levelPct: number | null
+  charging: boolean
+}
+
 const BASE = import.meta.env.VITE_API_BASE || ''
 const KEY = import.meta.env.VITE_API_KEY || ''
 
@@ -24,6 +29,7 @@ async function call<T>(path: string, init: RequestInit, timeoutMs: number): Prom
 
 export const api = {
   status: () => call<MediaStatus>('media/status', {}, 6_000),
+  phoneStatus: () => call<PhoneStatus>('phone/status', {}, 6_000),
   send: (id: string) =>
     call<ActionResult>('media/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }, 8_000),
   // Fire-and-forget: opt-in diagnostic logging, silently a no-op on the

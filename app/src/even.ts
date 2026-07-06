@@ -53,7 +53,7 @@ const SCROLL_THROTTLE_MS = 300
 // evenhub-templates' official "image" scaffold uses 200x100 and its
 // renderer.ts states the real limits are width 20-200, height 20-100 —
 // confirmed by a from-scratch imageException on a 180x140 panel.
-export const PANEL_W = 180
+export const PANEL_W = 200
 export const PANEL_H = 100
 const LEFT_W = W - PANEL_W - 28 // 28px margin between the two panels + right edge
 const PANEL_X = W - PANEL_W - 20

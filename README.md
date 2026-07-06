@@ -55,7 +55,9 @@ cloud, no other server. The backend only ever listens on `127.0.0.1`
   Store version is outdated and unsupported; F-Droid's is the one that
   gets updates: <https://f-droid.org/packages/com.termux/>)
 - **Termux:API** — companion app, also from F-Droid
-  (<https://f-droid.org/packages/com.termux.api/>)
+  (<https://f-droid.org/packages/com.termux.api/>). Powers the phone battery
+  reading on the dashboard (`termux-battery-status`); everything else works
+  without it.
 - **Termux:Boot** — only needed for the backend to auto-start after a phone
   reboot. The quick install below installs and launches it for you
   automatically over adb; see
@@ -126,8 +128,8 @@ pkg install -y nodejs-lts android-tools termux-api unzip
 
 - `nodejs-lts` — runs the backend (zero other dependencies)
 - `android-tools` — provides the `adb` command
-- `termux-api` — lets Termux talk to Android (not strictly required by
-  Glass Car Dash itself, but harmless and useful for other Termux tools)
+- `termux-api` — lets Termux talk to Android; powers the phone battery
+  reading on the dashboard (`termux-battery-status`) specifically
 - `unzip` — to extract the backend package
 
 ## 2. Enable wireless debugging and pair Termux to your own phone
@@ -322,6 +324,8 @@ a daily one.
 | Taps do nothing at all | Confirm the backend is actually running: `curl http://127.0.0.1:8790/api/health` from Termux |
 | Works, then stops after a while | Android may be killing Termux to save battery. Termux's own notification (swipe-down, "Termux running") has a toggle to acquire a wake lock — enable it, or run `termux-wake-lock` once in the session |
 | Boot script doesn't fire after reboot | Confirm Termux:Boot is installed AND has been opened at least once (`adb shell pm list packages \| grep termux.boot` to confirm install; if it never ran, Android's app-hibernation may have blocked it — open it manually once) |
+| Phone battery % never shows | Confirm Termux:API is installed (not just the `termux-api` package — the separate F-Droid app) and run `termux-battery-status` directly in Termux to check it returns JSON |
+| Now-playing title never shows | Best-effort only — it's parsed from `adb shell dumpsys media_session`, an undocumented debug dump, not a stable API. Some apps don't publish session metadata, and the parsing may not match every Android version/OEM. The dashboard works fine without it |
 
 ## Debugging speed/limit accuracy
 

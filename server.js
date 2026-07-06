@@ -6,6 +6,7 @@
 import http from 'node:http';
 import { getStatus, sendAction } from './api/_lib/media.js';
 import { appendDebugLog, debugLoggingEnabled } from './api/_lib/debug-log.js';
+import { getPhoneStatus } from './api/_lib/phone.js';
 
 const PORT = process.env.PORT || 8790;
 const KEY = process.env.REMOTE_KEY;
@@ -58,6 +59,8 @@ const server = http.createServer(async (req, res) => {
     let data;
     if (req.method === 'GET' && u.pathname === '/api/media/status') {
       data = await getStatus();
+    } else if (req.method === 'GET' && u.pathname === '/api/phone/status') {
+      data = await getPhoneStatus();
     } else if (isMediaAction) {
       data = await sendAction(await readJson(req));
     } else if (isDebugLog) {

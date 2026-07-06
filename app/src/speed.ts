@@ -43,6 +43,7 @@ export interface DrivingState {
   heading: CompassLabel | null
   limitMph: number | null
   limitSource: LimitSource | 'pending'
+  roadName: string | null
   cameraDistanceM: number | null
   tripMiles: number
   tripSeconds: number
@@ -50,7 +51,7 @@ export interface DrivingState {
 
 const initialState: DrivingState = {
   speedMph: null, heading: null, limitMph: null, limitSource: 'pending',
-  cameraDistanceM: null, tripMiles: 0, tripSeconds: 0,
+  roadName: null, cameraDistanceM: null, tripMiles: 0, tripSeconds: 0,
 }
 
 // Returns a stop function. Stopping only silences further onUpdate calls —
@@ -119,7 +120,7 @@ export function startSpeedTracking(
     try {
       const info = await lookupDrivingInfo(lat, lon)
       if (stopped) return
-      state = { ...state, limitMph: info.limitMph, limitSource: info.limitSource, cameraDistanceM: info.cameraDistanceM }
+      state = { ...state, limitMph: info.limitMph, limitSource: info.limitSource, roadName: info.roadName, cameraDistanceM: info.cameraDistanceM }
       lastLookupPos = { lat, lon }
       lastLookupAt = now
       emit()

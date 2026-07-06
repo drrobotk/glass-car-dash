@@ -68,9 +68,44 @@ export function listActions() {
   return Object.entries(ACTIONS).map(([id, a]) => ({ id, label: a.label }));
 }
 
+// Best-effort now-playing title, parsed from `dumpsys media_session` — an
+// undocumented debug dump, not a stable API, so this degrades to nulls
+// rather than erroring if the format doesn't match what was verified live
+// against a real device (Pixel 9 Pro, Android build current as of 2026-07).
+// "Media button session is X" identifies which package our own keyevents
+// actually target — that's the session whose metadata is worth showing,
+// not just whichever happens to be first/active, since multiple apps
+// (e.g. a paused video app) can hold a session at once.
+async function getNowPlaying() {
+  try {
+    const out = await runAdb(['shell', 'dumpsys', 'media_session']);
+    const targetMatch = out.match(/Media button session is ([^\s/]+)\//);
+    const targetPkg = targetMatch ? targetMatch[1] : null;
+    if (!targetPkg) return { title: null, playing: null };
+
+    const blocks = out.split(/\n(?=    \S.*\(userId=\d+\))/);
+    const block = blocks.find((b) => b.includes(`package=${targetPkg}`));
+    if (!block) return { title: null, playing: null };
+
+    const stateMatch = block.match(/state=PlaybackState \{state=(\w+)\(/);
+    const playing = stateMatch ? stateMatch[1] === 'PLAYING' : null;
+
+    const metaMatch = block.match(/metadata: size=\d+, description=(.*)/);
+    let title = null;
+    if (metaMatch) {
+      title = metaMatch[1].trim().split(',')[0].trim() || null;
+      if (title === 'null') title = null;
+    }
+    return { title, playing };
+  } catch {
+    return { title: null, playing: null };
+  }
+}
+
 export async function getStatus() {
   const status = await checkConnected();
-  return { connected: status.ok, serial: status.serial || null, reason: status.reason || null, actions: listActions() };
+  const nowPlaying = status.ok ? await getNowPlaying() : { title: null, playing: null };
+  return { connected: status.ok, serial: status.serial || null, reason: status.reason || null, actions: listActions(), nowPlaying };
 }
 
 export async function sendAction(input) {

@@ -22,7 +22,7 @@ const rt = new Runtime()
 
 const emptyDriving: DrivingState = {
   speedMph: null, heading: null, limitMph: null, limitSource: 'pending',
-  cameraDistanceM: null, tripMiles: 0, tripSeconds: 0,
+  roadName: null, cameraDistanceM: null, tripMiles: 0, tripSeconds: 0,
 }
 
 const state = {
@@ -32,6 +32,7 @@ const state = {
   busy: false, // guards against a gesture firing again before the last one lands
   driving: emptyDriving,
   battery: { levelPct: null, charging: false } as BatteryState,
+  phoneBattery: { levelPct: null, charging: false } as { levelPct: number | null; charging: boolean },
   panelResult: '', // last updateImageRawData result — the only diagnostic signal we get back for a bitmap push, per app-development.md's Sensorscope lesson
 }
 
@@ -50,10 +51,26 @@ async function loadStatus(): Promise<void> {
   paint()
 }
 
+async function loadPhoneStatus(): Promise<void> {
+  try {
+    state.phoneBattery = await api.phoneStatus()
+  } catch {
+    // Termux:API not installed or permission not granted — not worth
+    // surfacing as an error, the display just omits the line (see
+    // leftLines) the same way a missing camera/limit silently omits theirs.
+  }
+  paint()
+}
+
+// Plain-letter labels, not emoji — confirmed via the official simulator
+// (which mirrors the real font's glyph support) that 🕶/📱 render as nothing
+// at all in a text container, not even a placeholder box.
 function batteryText(): string {
   const b = state.battery
-  if (b.levelPct == null) return '…'
-  return `${b.charging ? '⚡' : ''}${b.levelPct}%`
+  const glasses = b.levelPct == null ? '…' : `${b.charging ? '⚡' : ''}${b.levelPct}%`
+  const pb = state.phoneBattery
+  const phone = pb.levelPct == null ? '' : `  P ${pb.charging ? '⚡' : ''}${pb.levelPct}%`
+  return `G ${glasses}${phone}`
 }
 
 function leftLines(): string[] {
@@ -65,10 +82,24 @@ function leftLines(): string[] {
   if (state.error) {
     return ['Error:', ...wrap(state.error, LEFT_WRAP_WIDTH).split('\n')]
   }
-  if (state.lastResult) {
-    return [`Sent: ${state.lastResult.label}`, F.timeAgo(state.lastResult.sentAt)]
-  }
-  return ['Ready.', 'tap = play/pause']
+
+  const lines: string[] = []
+  if (state.lastResult) lines.push(`Sent: ${state.lastResult.label}`, F.timeAgo(state.lastResult.sentAt))
+  else lines.push('Ready.')
+
+  // Best-effort now-playing title (see media.js's dumpsys media_session
+  // parser) — falls back to the plain gesture legend when nothing's
+  // playing or the parse comes up empty.
+  const np = state.status?.nowPlaying
+  if (np?.title) lines.push(...wrap(`${np.playing ? '▶' : 'II'} ${np.title}`, LEFT_WRAP_WIDTH).split('\n'))
+  else lines.push('▶ tap · » up · « down')
+
+  if (state.driving.roadName) lines.push(wrap(state.driving.roadName, LEFT_WRAP_WIDTH).split('\n')[0])
+
+  const pb = state.phoneBattery
+  if (pb.levelPct != null) lines.push(`Phone ${pb.charging ? '⚡' : ''}${pb.levelPct}%`)
+
+  return lines
 }
 
 async function render(): Promise<void> {
@@ -81,7 +112,7 @@ async function render(): Promise<void> {
   // of the person writing the code, only this string comes back).
   const footer = state.panelResult && state.panelResult !== 'success'
     ? `panel: ${state.panelResult}`
-    : 'tap play/pause · up next · down prev · 2x exit'
+    : '▶ tap · » up · « down · 2x exit'
   await rt.render(header, body, footer)
 }
 
@@ -150,6 +181,8 @@ async function main() {
   startSpeedTracking(rt, (d) => { state.driving = d }, (event) => api.debugLog(event))
   await loadStatus()
   setInterval(() => void loadStatus(), STATUS_REFRESH_MS)
+  void loadPhoneStatus()
+  setInterval(() => void loadPhoneStatus(), STATUS_REFRESH_MS)
   void pushPanel()
   setInterval(() => void pushPanel(), PANEL_PUSH_INTERVAL_MS)
 }

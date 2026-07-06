@@ -3,11 +3,17 @@ export interface MediaAction {
   label: string
 }
 
+export interface NowPlaying {
+  title: string | null
+  playing: boolean | null
+}
+
 export interface MediaStatus {
   connected: boolean
   serial: string | null
   reason: string | null
   actions: MediaAction[]
+  nowPlaying: NowPlaying
 }
 
 export interface ActionResult {
