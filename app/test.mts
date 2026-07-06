@@ -3,7 +3,7 @@
 // this pattern).
 import {
   parseMaxspeed, parseDrivingInfo, nearestWay, nearestCamera, haversineMeters,
-  UK_DEFAULT_LIMITS,
+  rankWaysByDistance, UK_DEFAULT_LIMITS,
 } from './src/osm.ts'
 import { headingToCompass, startSpeedTracking } from './src/speed.ts'
 
@@ -94,6 +94,22 @@ ok('nearestWay finds the closest of several candidates', nw?.way.tags?.name === 
 const nc = nearestCamera(FIXTURE_WITH_CAMERA.elements.filter((e) => e.type === 'node') as any, TEST_LAT, TEST_LON)
 ok('nearestCamera finds the camera node', nc !== null)
 
+// ── rankWaysByDistance: segment (not just vertex) distance ───────────────
+// A long straight way whose only two geometry points sit ~130-140m either
+// side of the test coordinate — but the road itself (the line between
+// them) passes right through it. Vertex-only distance would report this
+// way as ~130m+ away (missing entirely); point-to-segment correctly finds
+// the near-zero distance to the midpoint of the line.
+console.log('\nrankWaysByDistance — point-to-segment vs point-to-vertex')
+const FIXTURE_LONG_STRAIGHT_ROAD = [
+  { type: 'way', tags: { highway: 'residential', name: 'Long Straight Road' }, geometry: [
+    { lat: TEST_LAT, lon: TEST_LON - 0.002 },
+    { lat: TEST_LAT, lon: TEST_LON + 0.002 },
+  ] },
+]
+const ranked = rankWaysByDistance(FIXTURE_LONG_STRAIGHT_ROAD as any, TEST_LAT, TEST_LON)
+ok('finds the road via segment interpolation, not just its endpoints', ranked[0]?.distanceM < 10, `distanceM=${ranked[0]?.distanceM}`)
+
 // ── speed.ts: headingToCompass ────────────────────────────────────────────
 console.log('\nheadingToCompass')
 ok('0 degrees is N', headingToCompass(0) === 'N')
@@ -162,6 +178,46 @@ console.log('\nstartSpeedTracking — failed lookup keeps previous state, no cra
 
   ok('speed still reported despite lookup failure', states.at(-1)?.speedMph > 0)
   ok('limit stays pending rather than crashing or showing garbage', states.at(-1)?.limitSource === 'pending')
+
+  globalThis.fetch = originalFetch
+}
+
+// ── speed.ts: processSpeed (glitch rejection + smoothing) ─────────────────
+// Real delays (not 0ms) are load-bearing here — the algorithm judges
+// plausibility by implied acceleration (delta-speed / delta-time), so the
+// test needs real elapsed time to mean anything.
+console.log('\nstartSpeedTracking — speed glitch rejection + smoothing')
+{
+  const originalFetch = globalThis.fetch
+  ;(globalThis as any).fetch = async () => ({ ok: true, json: async () => FIXTURE_NO_ROADS })
+
+  let locationCallback: (loc: any) => void = () => {}
+  const fakeRt = { startLocationUpdates: async (cb: (loc: any) => void) => { locationCallback = cb } } as any
+
+  const states: any[] = []
+  startSpeedTracking(fakeRt, (s) => states.push(s))
+  await new Promise((r) => setTimeout(r, 0))
+
+  // First fix bootstraps the smoothed value directly (no prior reference).
+  locationCallback({ lat: TEST_LAT, lon: TEST_LON, speedMps: 10, headingDeg: 0 }) // ~22.4 mph
+  await new Promise((r) => setTimeout(r, 150))
+  const afterFirst = states.at(-1)?.speedMph
+  ok('first sample sets speed directly, no smoothing lag', Math.abs(afterFirst - 22.37) < 0.5, `speedMph=${afterFirst}`)
+
+  // Implausible jump (90 m/s over ~150ms => ~600 m/s^2, far past any real
+  // car): should be rejected outright, display stays at the last good value.
+  locationCallback({ lat: TEST_LAT, lon: TEST_LON, speedMps: 100, headingDeg: 0 })
+  await new Promise((r) => setTimeout(r, 150))
+  const afterGlitch = states.at(-1)?.speedMph
+  ok('implausible speed jump is rejected, not displayed', Math.abs(afterGlitch - afterFirst) < 0.5, `speedMph=${afterGlitch}`)
+
+  // Plausible change (1 m/s over ~150ms => ~6.7 m/s^2, under the 8 m/s^2
+  // ceiling): accepted, but EMA-smoothed rather than jumping straight there.
+  locationCallback({ lat: TEST_LAT, lon: TEST_LON, speedMps: 11, headingDeg: 0 }) // ~24.6 mph raw
+  await new Promise((r) => setTimeout(r, 150))
+  const afterPlausible = states.at(-1)?.speedMph
+  ok('plausible change is accepted', afterPlausible > afterGlitch, `speedMph=${afterPlausible}`)
+  ok('plausible change is smoothed, not applied raw', afterPlausible < 24.6, `speedMph=${afterPlausible}`)
 
   globalThis.fetch = originalFetch
 }

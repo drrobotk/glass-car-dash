@@ -147,7 +147,7 @@ async function main() {
   // that didn't exist yet and silently went nowhere.
   await render()
   startBatteryTracking(rt, (b) => { state.battery = b; paint() })
-  startSpeedTracking(rt, (d) => { state.driving = d })
+  startSpeedTracking(rt, (d) => { state.driving = d }, (event) => api.debugLog(event))
   await loadStatus()
   setInterval(() => void loadStatus(), STATUS_REFRESH_MS)
   void pushPanel()

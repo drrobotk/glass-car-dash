@@ -323,6 +323,26 @@ a daily one.
 | Works, then stops after a while | Android may be killing Termux to save battery. Termux's own notification (swipe-down, "Termux running") has a toggle to acquire a wake lock — enable it, or run `termux-wake-lock` once in the session |
 | Boot script doesn't fire after reboot | Confirm Termux:Boot is installed AND has been opened at least once (`adb shell pm list packages \| grep termux.boot` to confirm install; if it never ran, Android's app-hibernation may have blocked it — open it manually once) |
 
+## Debugging speed/limit accuracy
+
+If the shown speed or speed limit seems off on a drive, there's an opt-in
+diagnostic log — every GPS fix and every Overpass lookup (with every
+candidate road it considered, not just the one it picked) gets recorded, so
+a real drive's data can be reviewed afterward instead of guessed at.
+
+Off by default (see [Privacy](#privacy)). To enable it for one drive:
+
+```bash
+echo "DEBUG_LOG=1" >> ~/glass-car-dash/.env
+cd ~/glass-car-dash && ./start.sh --stop && ./start.sh --bg
+```
+
+Drive, then pull `~/glass-car-dash-debug.log` off the phone (e.g. `scp` over
+Termux's SSH, or `adb shell run-as com.termux cat ~/glass-car-dash-debug.log`
+if the Termux build is debuggable). Turn it back off afterward the same way
+(remove the line, restart the backend) — it's meant for a deliberate
+debugging session, not to run continuously.
+
 ## Uninstalling
 
 ```bash

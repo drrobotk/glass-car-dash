@@ -5,6 +5,7 @@
 //   node --env-file=.env server.js
 import http from 'node:http';
 import { getStatus, sendAction } from './api/_lib/media.js';
+import { appendDebugLog, debugLoggingEnabled } from './api/_lib/debug-log.js';
 
 const PORT = process.env.PORT || 8790;
 const KEY = process.env.REMOTE_KEY;
@@ -39,12 +40,13 @@ const server = http.createServer(async (req, res) => {
 
   if (u.pathname === '/api/health') return send(res, 200, { ok: true });
 
-  // The write action (send a keyevent) is deny-by-default, key only via the
-  // custom header — same reasoning as every other app in this pattern: a
-  // custom header forces a CORS preflight, so a random page reaching this
-  // LAN/localhost port can't fire a media command cross-origin.
-  const isAction = req.method === 'POST' && u.pathname === '/api/media/action';
-  if (isAction) {
+  // Write actions are deny-by-default, key only via the custom header — same
+  // reasoning as every other app in this pattern: a custom header forces a
+  // CORS preflight, so a random page reaching this LAN/localhost port can't
+  // fire a media command (or spam the debug log) cross-origin.
+  const isMediaAction = req.method === 'POST' && u.pathname === '/api/media/action';
+  const isDebugLog = req.method === 'POST' && u.pathname === '/api/debug/log';
+  if (isMediaAction || isDebugLog) {
     if (!KEY) return send(res, 401, { ok: false, error: 'auth required (set REMOTE_KEY)' });
     if (req.headers['x-remote-key'] !== KEY) return send(res, 401, { ok: false, error: 'bad key' });
   } else if (KEY) {
@@ -56,8 +58,12 @@ const server = http.createServer(async (req, res) => {
     let data;
     if (req.method === 'GET' && u.pathname === '/api/media/status') {
       data = await getStatus();
-    } else if (isAction) {
+    } else if (isMediaAction) {
       data = await sendAction(await readJson(req));
+    } else if (isDebugLog) {
+      // Silently no-ops unless DEBUG_LOG=1 is set — see api/_lib/debug-log.js.
+      await appendDebugLog(await readJson(req));
+      data = { logged: debugLoggingEnabled() };
     } else {
       return send(res, 404, { ok: false, error: 'not found' });
     }
@@ -70,4 +76,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Glass Car Dash backend -> http://0.0.0.0:${PORT}  (key ${KEY ? 'required' : 'DISABLED - set REMOTE_KEY'})`);
+  if (debugLoggingEnabled()) console.log('Debug logging ENABLED -> ~/glass-car-dash-debug.log');
 });

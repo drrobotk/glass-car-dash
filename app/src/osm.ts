@@ -32,6 +32,13 @@ export const UK_DEFAULT_LIMITS: Record<string, number> = {
 
 export type LimitSource = 'tagged' | 'default-table' | 'no-road-found' | 'unknown-highway-type'
 
+export interface CandidateWay {
+  name: string | null
+  highway: string | null
+  maxspeed: string | null
+  distanceM: number
+}
+
 export interface DrivingInfo {
   limitMph: number | null
   limitSource: LimitSource
@@ -39,6 +46,11 @@ export interface DrivingInfo {
   highway: string | null
   distanceM: number | null
   cameraDistanceM: number | null
+  // Every candidate way in range, nearest first — not just the winner.
+  // Unused by the live UI (DrivingState doesn't carry it), only by the
+  // opt-in debug logger (see main.ts), so a wrong pick can be diagnosed
+  // after the fact instead of guessed at.
+  candidates: CandidateWay[]
 }
 
 interface OverpassGeomPoint { lat: number; lon: number }
@@ -73,16 +85,55 @@ export function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: 
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-export function nearestWay(ways: OverpassElement[], lat: number, lon: number): { way: OverpassElement; distanceM: number } | null {
-  let best: OverpassElement | null = null
-  let bestDist = Infinity
+// Flat-earth (equirectangular) point-to-segment distance, valid at the
+// ~100m scale this app queries at. Distance-to-nearest-VERTEX (the previous
+// approach) systematically misjudges a way's true distance whenever the
+// closest point on the road actually falls between two sparse vertices —
+// long, simply-mapped roads (motorways/trunk roads often have fewer
+// vertices per km than fiddly residential streets) would report a falsely
+// large distance, letting a genuinely farther but more densely-vertexed
+// road win "nearest way" incorrectly. Point-to-segment removes this bias
+// regardless of which direction it happened to point in a given case.
+function segmentDistanceMeters(lat: number, lon: number, aLat: number, aLon: number, bLat: number, bLon: number): number {
+  const cosLat = Math.cos((lat * Math.PI) / 180)
+  const mPerDegLat = 110_540
+  const mPerDegLon = 111_320 * cosLat
+  const ax = (aLon - lon) * mPerDegLon, ay = (aLat - lat) * mPerDegLat
+  const bx = (bLon - lon) * mPerDegLon, by = (bLat - lat) * mPerDegLat
+  const abx = bx - ax, aby = by - ay
+  const abLenSq = abx * abx + aby * aby
+  let t = abLenSq === 0 ? 0 : (-ax * abx - ay * aby) / abLenSq
+  t = Math.max(0, Math.min(1, t))
+  const px = ax + t * abx, py = ay + t * aby
+  return Math.sqrt(px * px + py * py)
+}
+
+// Ranked so the debug logger (see main.ts) can record every candidate the
+// algorithm considered, not just the winner — the only way to tell, after
+// the fact, whether a wrong pick was close-but-plausible or a clear bug.
+export function rankWaysByDistance(ways: OverpassElement[], lat: number, lon: number): { way: OverpassElement; distanceM: number }[] {
+  const results: { way: OverpassElement; distanceM: number }[] = []
   for (const w of ways) {
-    for (const pt of w.geometry || []) {
-      const d = haversineMeters(lat, lon, pt.lat, pt.lon)
-      if (d < bestDist) { bestDist = d; best = w }
+    const pts = w.geometry || []
+    if (pts.length === 0) continue
+    let best = Infinity
+    if (pts.length === 1) {
+      best = haversineMeters(lat, lon, pts[0].lat, pts[0].lon)
+    } else {
+      for (let i = 0; i < pts.length - 1; i++) {
+        const d = segmentDistanceMeters(lat, lon, pts[i].lat, pts[i].lon, pts[i + 1].lat, pts[i + 1].lon)
+        if (d < best) best = d
+      }
     }
+    results.push({ way: w, distanceM: Math.round(best) })
   }
-  return best ? { way: best, distanceM: Math.round(bestDist) } : null
+  results.sort((a, b) => a.distanceM - b.distanceM)
+  return results
+}
+
+export function nearestWay(ways: OverpassElement[], lat: number, lon: number): { way: OverpassElement; distanceM: number } | null {
+  const ranked = rankWaysByDistance(ways, lat, lon)
+  return ranked.length ? ranked[0] : null
 }
 
 export function nearestCamera(nodes: OverpassElement[], lat: number, lon: number): { distanceM: number } | null {
@@ -95,6 +146,8 @@ export function nearestCamera(nodes: OverpassElement[], lat: number, lon: number
   return bestDist < Infinity ? { distanceM: Math.round(bestDist) } : null
 }
 
+const MAX_LOGGED_CANDIDATES = 5
+
 // Pure parsing step, split out from lookupDrivingInfo so it's testable
 // against captured fixture JSON with zero network involved.
 export function parseDrivingInfo(json: OverpassResponse, lat: number, lon: number): DrivingInfo {
@@ -102,16 +155,23 @@ export function parseDrivingInfo(json: OverpassResponse, lat: number, lon: numbe
   const cameraNodes = json.elements.filter((e) => e.type === 'node' && e.tags?.highway === 'speed_camera')
 
   const camera = nearestCamera(cameraNodes, lat, lon)
-  const nearest = nearestWay(ways, lat, lon)
+  const ranked = rankWaysByDistance(ways, lat, lon)
+  const nearest = ranked[0]
+  const candidates: CandidateWay[] = ranked.slice(0, MAX_LOGGED_CANDIDATES).map((r) => ({
+    name: r.way.tags?.name ?? null,
+    highway: r.way.tags?.highway ?? null,
+    maxspeed: r.way.tags?.maxspeed ?? null,
+    distanceM: r.distanceM,
+  }))
 
   if (!nearest) {
-    return { limitMph: null, limitSource: 'no-road-found', roadName: null, highway: null, distanceM: null, cameraDistanceM: camera?.distanceM ?? null }
+    return { limitMph: null, limitSource: 'no-road-found', roadName: null, highway: null, distanceM: null, cameraDistanceM: camera?.distanceM ?? null, candidates }
   }
 
   const { way, distanceM } = nearest
   const explicit = parseMaxspeed(way.tags?.maxspeed)
   if (explicit != null) {
-    return { limitMph: explicit, limitSource: 'tagged', roadName: way.tags?.name ?? null, highway: way.tags?.highway ?? null, distanceM, cameraDistanceM: camera?.distanceM ?? null }
+    return { limitMph: explicit, limitSource: 'tagged', roadName: way.tags?.name ?? null, highway: way.tags?.highway ?? null, distanceM, cameraDistanceM: camera?.distanceM ?? null, candidates }
   }
   const fallback = way.tags?.highway ? UK_DEFAULT_LIMITS[way.tags.highway] ?? null : null
   return {
@@ -121,6 +181,7 @@ export function parseDrivingInfo(json: OverpassResponse, lat: number, lon: numbe
     highway: way.tags?.highway ?? null,
     distanceM,
     cameraDistanceM: camera?.distanceM ?? null,
+    candidates,
   }
 }
 

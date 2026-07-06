@@ -26,4 +26,11 @@ export const api = {
   status: () => call<MediaStatus>('media/status', {}, 6_000),
   send: (id: string) =>
     call<ActionResult>('media/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }, 8_000),
+  // Fire-and-forget: opt-in diagnostic logging, silently a no-op on the
+  // backend unless DEBUG_LOG=1 is set there (see api/_lib/debug-log.js).
+  // Must never throw — a logging failure can't be allowed to affect the
+  // actual feature.
+  debugLog: (event: Record<string, unknown>): void => {
+    void call('debug/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(event) }, 4_000).catch(() => {})
+  },
 }

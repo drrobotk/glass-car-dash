@@ -17,6 +17,18 @@ const MOVE_THRESHOLD_M = 120 // within the designed 100-150m range
 const LOOKUP_TIMEOUT_MS = 15_000
 const MPS_TO_MPH = 2.23694
 const METERS_TO_MILES = 1 / 1609.34
+// Raw GPS speed readings are noisy sample-to-sample (a known artifact,
+// worse with a marginal fix) — a bad single sample otherwise shows up
+// directly on the display. Two independent guards, not one:
+//  - reject implausible jumps (>0.8g equivalent) as glitches, not real
+//    driving, but still track them as "last raw" so a genuine sustained
+//    hard acceleration doesn't get stuck rejected forever;
+//  - light EMA smoothing on top, so accepted samples don't jitter either.
+// "More satellites" isn't something this app controls — AppLocationAccuracy
+// .High already asks Android/GNSS for its best fix; this is the computation
+// side, which is what's actually ours to improve.
+const MAX_PLAUSIBLE_ACCEL_MPS2 = 8
+const SPEED_EMA_ALPHA = 0.4
 
 export type CompassLabel = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW'
 const COMPASS: CompassLabel[] = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
@@ -45,7 +57,16 @@ const initialState: DrivingState = {
 // there's no real unsubscribe plumbed through the SDK wrapper, because this
 // app starts tracking once at launch and runs it for the app's whole
 // lifetime (see the design doc's Open Question); a soft stop is enough.
-export function startSpeedTracking(rt: Runtime, onUpdate: (state: DrivingState) => void): () => void {
+//
+// onDebugEvent is injected rather than imported (this module stays
+// decoupled from api.ts, which reads import.meta.env — a Vite-only global
+// that doesn't exist when this file runs directly under plain Node in
+// test.mts) — main.ts wires it to api.debugLog; tests just omit it.
+export function startSpeedTracking(
+  rt: Runtime,
+  onUpdate: (state: DrivingState) => void,
+  onDebugEvent: (event: Record<string, unknown>) => void = () => {},
+): () => void {
   let stopped = false
   let state: DrivingState = { ...initialState }
 
@@ -55,6 +76,33 @@ export function startSpeedTracking(rt: Runtime, onUpdate: (state: DrivingState) 
   let lastLookupPos: { lat: number; lon: number } | null = null
   let lastLookupAt = 0
   let lookupInFlight = false
+
+  let lastRawSpeedMps: number | null = null
+  let lastRawSpeedAt: number | null = null
+  let smoothedSpeedMph: number | null = null
+
+  function processSpeed(speedMps: number | null): number | null {
+    if (speedMps == null) return smoothedSpeedMph
+    const now = Date.now()
+    if (lastRawSpeedMps != null && lastRawSpeedAt != null && smoothedSpeedMph != null) {
+      const dtS = (now - lastRawSpeedAt) / 1000
+      if (dtS > 0 && Math.abs(speedMps - lastRawSpeedMps) / dtS > MAX_PLAUSIBLE_ACCEL_MPS2) {
+        // Reference point deliberately NOT updated here — a lone glitch
+        // shouldn't poison the comparison for the next real sample too.
+        // Genuine sustained acceleration (e.g. merging onto a motorway)
+        // still resolves itself: each rejection leaves the reference at the
+        // same point, so dtS keeps growing across readings until enough
+        // real time has passed that the implied acceleration drops back
+        // under the threshold and it's accepted, catching up to reality.
+        return smoothedSpeedMph
+      }
+    }
+    lastRawSpeedMps = speedMps
+    lastRawSpeedAt = now
+    const mph = speedMps * MPS_TO_MPH
+    smoothedSpeedMph = smoothedSpeedMph == null ? mph : smoothedSpeedMph + SPEED_EMA_ALPHA * (mph - smoothedSpeedMph)
+    return smoothedSpeedMph
+  }
 
   function emit() {
     if (!stopped) onUpdate({ ...state })
@@ -75,12 +123,19 @@ export function startSpeedTracking(rt: Runtime, onUpdate: (state: DrivingState) 
       lastLookupPos = { lat, lon }
       lastLookupAt = now
       emit()
-    } catch {
+      onDebugEvent({
+        type: 'lookup', lat, lon,
+        chosen: { name: info.roadName, highway: info.highway, distanceM: info.distanceM },
+        limitMph: info.limitMph, limitSource: info.limitSource, cameraDistanceM: info.cameraDistanceM,
+        candidates: info.candidates,
+      })
+    } catch (e: any) {
       // A failed/slow lookup keeps the previous cached limit/camera state —
       // this is a non-critical background enhancement, never surfaced as
       // an error. Still counts as "tried" so a down service can't get
       // hammered every location update.
       lastLookupAt = now
+      onDebugEvent({ type: 'lookup-failed', lat, lon, error: String(e?.message || e) })
     } finally {
       lookupInFlight = false
     }
@@ -94,12 +149,16 @@ export function startSpeedTracking(rt: Runtime, onUpdate: (state: DrivingState) 
 
     state = {
       ...state,
-      speedMph: loc.speedMps != null ? loc.speedMps * MPS_TO_MPH : state.speedMph,
+      speedMph: processSpeed(loc.speedMps),
       heading: loc.headingDeg != null ? headingToCompass(loc.headingDeg) : state.heading,
       tripMiles: tripMeters * METERS_TO_MILES,
       tripSeconds: tripStartedAt ? Math.round((Date.now() - tripStartedAt) / 1000) : 0,
     }
     emit()
+    onDebugEvent({
+      type: 'fix', lat: loc.lat, lon: loc.lon,
+      speedMpsRaw: loc.speedMps, speedMphSmoothed: state.speedMph, headingDeg: loc.headingDeg,
+    })
     void maybeLookup(loc.lat, loc.lon)
   })
 
