@@ -35,12 +35,14 @@ Three images are in this folder:
   browser approximation). Use these as the supporting screenshots, so the
   listing shows both the pitch (hero) and the real thing (these two).
 
-All three use placeholder demo values (42 mph, limit 30, heading NE / a
-240m camera warning) set temporarily for the captures — the real app starts
-blank/pending until GPS and the Overpass lookup return real data, and the
-simulator can't produce that itself (its console log shows
-`unknown variant 'startAppLocationUpdates'` — it doesn't implement the
-SDK's location APIs).
+All three use placeholder demo values for speed/limit/heading/road name
+(42 mph, limit 30, heading NE, "Underwood Road" / a 240m camera warning)
+set temporarily for the captures — the real app starts blank/pending until
+GPS and the Overpass lookup return real data, and the simulator can't
+produce that itself (its console log shows `unknown variant
+'startAppLocationUpdates'` — it doesn't implement the SDK's location APIs).
+The now-playing title and phone battery %, on the other hand, are real —
+whatever the backend actually saw on the connected phone at capture time.
 
 ## 4. App description
 
@@ -60,12 +62,16 @@ by other Even Hub listings:
 > **Speed camera warnings.** Nearby fixed speed cameras surface
 > automatically, with distance, so there's no surprise.
 >
-> **Heading, at a glance.** A compass label shows which way you're facing
-> alongside your speed.
+> **Heading and road name, at a glance.** A compass label and the name of
+> the road you're on sit alongside your speed.
 >
 > **Hands-free media control.** Tap to play/pause, swipe up/down for
 > next/previous — works with whatever's playing (Spotify, YouTube Music,
-> podcasts, anything), no app-specific integration needed.
+> podcasts, anything), no app-specific integration needed, and shows the
+> current track title when it can.
+>
+> **Both batteries at a glance.** Glasses and phone battery both show in
+> the header, so you know which one needs charging first.
 >
 > **Free, open data, no accounts.** Works with no login and no API keys —
 > OpenStreetMap's public Overpass API for speed limits/cameras, and your own
@@ -94,7 +100,9 @@ against the source, not boilerplate):
 > account system, no analytics, and no advertising.
 >
 > The app makes exactly two kinds of network request, both described in its
-> declared permissions:
+> declared permissions — everything else (phone battery, now-playing track
+> title) is read from your own phone by your own backend and never leaves
+> the device either:
 >
 > 1. **Location lookups** — your device's GPS coordinates (latitude/
 >    longitude only) are sent directly from your phone to OpenStreetMap's
@@ -107,9 +115,17 @@ against the source, not boilerplate):
 >    only on `127.0.0.1` (the phone's own loopback interface) — this traffic
 >    never leaves your device.
 >
-> No trip data, speed history, or location history is persisted anywhere;
-> trip distance/timer exist only in memory for the current session and are
-> discarded when the app closes.
+> The same local backend also reads two things directly from Android and
+> serves them to the display over that same loopback connection, never
+> anywhere else: your phone's battery percentage (`termux-battery-status`),
+> and the title of whatever's currently playing, if the app publishes it
+> (`dumpsys media_session`) — best-effort only, since that's an
+> undocumented system dump, not a stable API.
+>
+> No trip data, speed history, location history, or now-playing history is
+> persisted anywhere; trip distance/timer and the current track title exist
+> only in memory for the current session and are discarded when the app
+> closes.
 >
 > **Terms**
 >

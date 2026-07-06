@@ -62,14 +62,16 @@ async function loadPhoneStatus(): Promise<void> {
   paint()
 }
 
-// Plain-letter labels, not emoji — confirmed via the official simulator
-// (which mirrors the real font's glyph support) that 🕶/📱 render as nothing
-// at all in a text container, not even a placeholder box.
+// Plain-letter labels, not emoji or symbols — confirmed via the official
+// simulator (which mirrors the real font's glyph support) that 🕶/📱 render
+// as nothing at all in a text container, and the simulator's own log
+// (lv_draw_label: "glyph dsc. not found for U+26A1") confirms ⚡ doesn't
+// exist in the real font either. A trailing "+" is the charging indicator.
 function batteryText(): string {
   const b = state.battery
-  const glasses = b.levelPct == null ? '…' : `${b.charging ? '⚡' : ''}${b.levelPct}%`
+  const glasses = b.levelPct == null ? '…' : `${b.levelPct}%${b.charging ? '+' : ''}`
   const pb = state.phoneBattery
-  const phone = pb.levelPct == null ? '' : `  P ${pb.charging ? '⚡' : ''}${pb.levelPct}%`
+  const phone = pb.levelPct == null ? '' : `  P ${pb.levelPct}%${pb.charging ? '+' : ''}`
   return `G ${glasses}${phone}`
 }
 
@@ -97,7 +99,7 @@ function leftLines(): string[] {
   if (state.driving.roadName) lines.push(wrap(state.driving.roadName, LEFT_WRAP_WIDTH).split('\n')[0])
 
   const pb = state.phoneBattery
-  if (pb.levelPct != null) lines.push(`Phone ${pb.charging ? '⚡' : ''}${pb.levelPct}%`)
+  if (pb.levelPct != null) lines.push(`Phone ${pb.levelPct}%${pb.charging ? '+' : ''}`)
 
   return lines
 }

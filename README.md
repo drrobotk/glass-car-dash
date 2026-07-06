@@ -5,13 +5,14 @@
 One screen, split in two: your media remote on the left, a live driving
 dashboard on the right — current speed, local speed limit shown as a
 circular road-sign graphic (from your phone's GPS + the OSM Overpass API),
-compass heading, speed camera proximity warnings, and glasses battery, all
-visible at a glance while you drive.
+compass heading, current road name, speed camera proximity warnings, and
+glasses + phone battery, all visible at a glance while you drive.
 
 The remote side controls whatever's playing on your phone. No
 media-app-specific integration: it works by sending standard Android media
 keyevents via ADB, so it works with Spotify, YouTube Music, podcasts,
-anything.
+anything — and shows the current track title when it can (best-effort, see
+[Troubleshooting](#troubleshooting)).
 
 **Gestures:**
 - **Tap** = play/pause
@@ -370,9 +371,10 @@ expect to need it for a while, if that matters to you.
 
 No accounts, no analytics, no data collected or stored by the developer.
 GPS coordinates go directly from your phone to OpenStreetMap's public
-Overpass API for speed limit/camera lookups; media commands go to your own
-backend on `127.0.0.1` and never leave the device. Full details in
-[`docs/store/STORE_LISTING.md`](docs/store/STORE_LISTING.md).
+Overpass API for speed limit/camera lookups; media commands, phone
+battery, and the now-playing track title all go through (or come from)
+your own backend on `127.0.0.1` and never leave the device. Full details
+in [`docs/store/STORE_LISTING.md`](docs/store/STORE_LISTING.md).
 
 ## License
 
