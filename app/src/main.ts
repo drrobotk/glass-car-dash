@@ -12,7 +12,7 @@ import * as F from './format'
 import { startSpeedTracking, type DrivingState } from './speed'
 import { startBatteryTracking, type BatteryState } from './battery'
 import { renderDashPanelPng } from './panel'
-import type { MediaStatus, ActionResult } from './types'
+import type { MediaStatus, ActionResult, NowPlaying } from './types'
 
 const STATUS_REFRESH_MS = 20_000
 const LEFT_WRAP_WIDTH = 22
@@ -75,6 +75,18 @@ function batteryText(): string {
   return `G ${glasses}${phone}`
 }
 
+// Some apps already fold the artist into the title ("Skepta - Nasty"),
+// others don't ("Test Me" with artist "JME" reported separately) —
+// verified both shapes live against a real device. Only append the artist
+// when it isn't already there, so it doesn't show up twice.
+function nowPlayingText(np: NowPlaying): string {
+  if (!np.title) return ''
+  if (np.artist && !np.title.toLowerCase().includes(np.artist.toLowerCase())) {
+    return `${np.title} - ${np.artist}`
+  }
+  return np.title
+}
+
 function leftLines(): string[] {
   if (state.busy) return ['Sending…']
   const connected = state.status?.connected
@@ -93,7 +105,7 @@ function leftLines(): string[] {
   // parser) — falls back to the plain gesture legend when nothing's
   // playing or the parse comes up empty.
   const np = state.status?.nowPlaying
-  if (np?.title) lines.push(...wrap(`${np.playing ? '▶' : 'II'} ${np.title}`, LEFT_WRAP_WIDTH).split('\n'))
+  if (np?.title) lines.push(...wrap(`${np.playing ? '▶' : 'II'} ${nowPlayingText(np)}`, LEFT_WRAP_WIDTH).split('\n'))
   else lines.push('▶ tap · » up · « down')
 
   if (state.driving.roadName) lines.push(wrap(state.driving.roadName, LEFT_WRAP_WIDTH).split('\n')[0])
@@ -145,6 +157,17 @@ function wrap(s: string, width: number): string {
   return lines.join('\n')
 }
 
+// Skip/pause change the actual media session, but the periodic status poll
+// (STATUS_REFRESH_MS, 20s) could take up to that long to notice — annoying
+// right after tapping next/previous, since that's exactly when you want the
+// new track/artist to show up. Schedule an extra check shortly after a
+// successful action instead of waiting for the regular interval. Delayed
+// (not immediate) because the target app needs a beat to actually switch
+// tracks and publish new session metadata — an instant re-check would just
+// re-read the outgoing track.
+const NOWPLAYING_REFRESH_DELAY_MS = 1000
+const TRACK_CHANGE_ACTIONS = new Set(['play_pause', 'next', 'previous'])
+
 async function fire(id: string): Promise<void> {
   if (state.busy) return
   state.busy = true
@@ -152,6 +175,7 @@ async function fire(id: string): Promise<void> {
   paint()
   try {
     state.lastResult = await api.send(id)
+    if (TRACK_CHANGE_ACTIONS.has(id)) setTimeout(() => void loadStatus(), NOWPLAYING_REFRESH_DELAY_MS)
   } catch (e: any) {
     state.error = e?.message || 'send failed'
     void loadStatus() // the send failure might mean the device disconnected — recheck

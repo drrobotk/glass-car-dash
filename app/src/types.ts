@@ -5,6 +5,7 @@ export interface MediaAction {
 
 export interface NowPlaying {
   title: string | null
+  artist: string | null
   playing: boolean | null
 }
 

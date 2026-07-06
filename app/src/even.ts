@@ -2,10 +2,16 @@
 // text containers; the body shares its row with a bitmap "dash panel" image
 // container (speed-limit sign) on the right.
 //
-// Two modes:
-//   - REAL: inside the Even app WebView -> drives the glasses via the SDK.
-//   - MIRROR: plain browser -> renders the same zones to the DOM + maps
-//     the keyboard to glasses input.
+// The phone-side WebView always shows a live preview of the same content
+// (plus buttons that fire the same input handler as real glasses gestures)
+// — this isn't just a browser-dev convenience, it's the permanent phone-side
+// UI, since the phone screen would otherwise just sit on index.html's static
+// placeholder the whole time the app runs. `real` distinguishes where the
+// DATA comes from, not whether the preview renders:
+//   - REAL: inside the Even app WebView -> also drives the actual glasses.
+//   - MIRROR: no native bridge (plain browser, or bridge connect failed) ->
+//     preview only, and startLocationUpdates/onBattery synthesize fake data
+//     so the whole pipeline is exercisable without hardware.
 //
 // Real-vs-mirror detection: waitForEvenAppBridge() resolves a JS-side bridge
 // object almost immediately even with no native host listening, so it's not
@@ -107,16 +113,16 @@ export class Runtime {
   private handler: (i: Input) => void = () => {}
   private lastScroll = 0
   private lastInput = { type: '', at: 0 }
-  private mirrorEls: { header: HTMLElement; body: HTMLElement; footer: HTMLElement } | null = null
-  private mirrorPanelCtx: CanvasRenderingContext2D | null = null
+  private previewEls: { header: HTMLElement; body: HTMLElement; footer: HTMLElement } | null = null
+  private previewPanelCtx: CanvasRenderingContext2D | null = null
   private lastDeviceStatus: any = null
   private batteryHandler: ((levelPct: number | null, charging: boolean) => void) | null = null
 
   async connect(): Promise<void> {
+    this.setupPreview()
     const hasFlutterHost = typeof (window as any).flutter_inappwebview?.callHandler === 'function'
     if (!hasFlutterHost) {
       this.real = false
-      this.setupMirror()
       return
     }
     try {
@@ -134,7 +140,6 @@ export class Runtime {
       this.bridge.onDeviceStatusChanged((status: any) => this.handleDeviceStatus(status))
     } catch {
       this.real = false
-      this.setupMirror()
     }
   }
 
@@ -143,10 +148,8 @@ export class Runtime {
   }
 
   async render(header: string, body: string, footer: string): Promise<void> {
-    if (!this.real || !this.bridge) {
-      this.paintMirror(header, body, footer)
-      return
-    }
+    this.paintPreview(header, body, footer)
+    if (!this.real || !this.bridge) return
 
     if (!this.started) {
       await this.bridge.createStartUpPageContainer(
@@ -186,7 +189,8 @@ export class Runtime {
   // even-realities/evenhub-templates' image/src/image/renderer.ts). Sending
   // flat luminance bytes here is what produced imageException before.
   async pushPanel(pngBytes: Uint8Array): Promise<string> {
-    if (!this.real || !this.bridge) { await this.paintMirrorPanel(pngBytes); return 'success' }
+    await this.paintPreviewPanel(pngBytes)
+    if (!this.real || !this.bridge) return 'success'
     const res = await this.bridge.updateImageRawData(new ImageRawDataUpdate({
       containerID: PANEL_ID, containerName: PANEL_NAME, imageData: pngBytes,
     }))
@@ -204,11 +208,8 @@ export class Runtime {
   }
 
   async exit(): Promise<void> {
-    if (this.real && this.bridge) {
-      await this.bridge.shutDownPageContainer(1)
-    } else {
-      this.paintMirror('Glass Car Dash', '\n  Exited. Reload the page to restart.', '')
-    }
+    this.paintPreview('Glass Car Dash', '\n  Exited. Reload the page to restart.', '')
+    if (this.real && this.bridge) await this.bridge.shutDownPageContainer(1)
   }
 
   // Continuous location, real or synthesized. In mirror mode, drifts a fake
@@ -325,10 +326,15 @@ export class Runtime {
     this.handler(dir)
   }
 
-  private setupMirror() {
+  // Permanent phone-side UI — not just a browser-dev convenience (see the
+  // file-level doc comment). The panel is built at the glasses' actual
+  // 576x288 pixel size so it's a true 1:1 preview, then scaled down to fit
+  // whatever the phone's viewport actually is via a wrapper + CSS
+  // transform, since a real phone WebView is nowhere near 576px wide.
+  private setupPreview() {
     const app = document.getElementById('app')!
     app.innerHTML = ''
-    app.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:14px;justify-content:center'
+    app.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:14px;justify-content:center;padding:16px;box-sizing:border-box;min-height:100%'
 
     const panel = document.createElement('div')
     panel.style.cssText = [
@@ -361,13 +367,32 @@ export class Runtime {
     dashCanvas.height = PANEL_H
     dashCanvas.style.cssText = `width:${PANEL_W}px;height:${PANEL_H}px;margin-left:${(W - LEFT_W - PANEL_W) / 2}px;image-rendering:pixelated`
     bodyRow.appendChild(dashCanvas)
-    this.mirrorPanelCtx = dashCanvas.getContext('2d')
+    this.previewPanelCtx = dashCanvas.getContext('2d')
 
     const footer = mk(FOOTER_H, 'border-top:1px solid #154;color:#2a9')
-    this.mirrorEls = { header, body, footer }
+    this.previewEls = { header, body, footer }
+
+    // Scaled wrapper: transform:scale() doesn't affect layout flow, so the
+    // wrapper is sized to the POST-scale dimensions itself, otherwise
+    // everything below it (buttons, hint) would sit under the unscaled
+    // 576x288 footprint instead of right after the visible (smaller) panel.
+    const panelWrap = document.createElement('div')
+    panelWrap.style.cssText = 'position:relative;flex-shrink:0'
+    panelWrap.appendChild(panel)
+    app.appendChild(panelWrap)
+
+    const rescale = () => {
+      const scale = Math.min(1, (window.innerWidth - 32) / W)
+      panel.style.transform = `scale(${scale})`
+      panel.style.transformOrigin = 'top left'
+      panelWrap.style.width = `${W * scale}px`
+      panelWrap.style.height = `${H * scale}px`
+    }
+    rescale()
+    window.addEventListener('resize', rescale)
 
     const bar = document.createElement('div')
-    bar.style.cssText = 'display:flex;gap:8px'
+    bar.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;justify-content:center'
     const btn = (label: string, i: Input) => {
       const b = document.createElement('button')
       b.textContent = label
@@ -379,14 +404,15 @@ export class Runtime {
     btn('● tap (play/pause)', 'click')
     btn('▼ down (prev)', 'down')
     btn('×2 exit', 'double')
-    app.appendChild(panel)
     app.appendChild(bar)
 
     const hint = document.createElement('div')
-    hint.textContent = 'mirror mode — keys: ↑ ↓  Enter=tap  Esc=back'
-    hint.style.cssText = 'color:#888;font:12px system-ui'
+    hint.textContent = 'Live preview of the glasses display — buttons above mirror the real gestures'
+    hint.style.cssText = 'color:#888;font:12px system-ui;text-align:center'
     app.appendChild(hint)
 
+    // Only ever fires in a browser (real phones have no physical keyboard),
+    // harmless to register unconditionally.
     window.addEventListener('keydown', (ev) => {
       if (ev.key === 'ArrowUp') { ev.preventDefault(); this.handler('up') }
       else if (ev.key === 'ArrowDown') { ev.preventDefault(); this.handler('down') }
@@ -395,19 +421,19 @@ export class Runtime {
     })
   }
 
-  private paintMirror(header: string, body: string, footer: string) {
-    if (!this.mirrorEls) return
-    this.mirrorEls.header.textContent = header
-    this.mirrorEls.body.textContent = body
-    this.mirrorEls.footer.textContent = footer
+  private paintPreview(header: string, body: string, footer: string) {
+    if (!this.previewEls) return
+    this.previewEls.header.textContent = header
+    this.previewEls.body.textContent = body
+    this.previewEls.footer.textContent = footer
   }
 
   // Decodes the same PNG bytes real hardware would receive and draws them —
   // this exercises the actual encode step, not just a pixel approximation.
-  private async paintMirrorPanel(pngBytes: Uint8Array) {
-    if (!this.mirrorPanelCtx) return
+  private async paintPreviewPanel(pngBytes: Uint8Array) {
+    if (!this.previewPanelCtx) return
     const bitmap = await createImageBitmap(new Blob([pngBytes as BlobPart], { type: 'image/png' }))
-    this.mirrorPanelCtx.clearRect(0, 0, PANEL_W, PANEL_H)
-    this.mirrorPanelCtx.drawImage(bitmap, 0, 0)
+    this.previewPanelCtx.clearRect(0, 0, PANEL_W, PANEL_H)
+    this.previewPanelCtx.drawImage(bitmap, 0, 0)
   }
 }

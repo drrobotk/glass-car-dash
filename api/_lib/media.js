@@ -90,21 +90,32 @@ async function getNowPlaying() {
     const stateMatch = block.match(/state=PlaybackState \{state=(\w+)\(/);
     const playing = stateMatch ? stateMatch[1] === 'PLAYING' : null;
 
+    // `description=<title>, <subtitle>, <artist>` — verified live against
+    // two real shapes: "Frank's Pretty Woman, S7:E1 - ..., null" (video, no
+    // artist) and "Skepta - Nasty, Skepta, Skepta" (music, artist repeated
+    // in both subtitle and artist position, AND already folded into the
+    // title). The last field is the most reliable "artist" signal; the
+    // middle one is too inconsistent (sometimes artist, sometimes an
+    // episode subtitle) to use on its own.
     const metaMatch = block.match(/metadata: size=\d+, description=(.*)/);
     let title = null;
+    let artist = null;
     if (metaMatch) {
-      title = metaMatch[1].trim().split(',')[0].trim() || null;
+      const parts = metaMatch[1].trim().split(',').map((s) => s.trim());
+      title = parts[0] || null;
       if (title === 'null') title = null;
+      const last = parts[parts.length - 1];
+      if (last && last !== 'null' && last.toLowerCase() !== (title || '').toLowerCase()) artist = last;
     }
-    return { title, playing };
+    return { title, artist, playing };
   } catch {
-    return { title: null, playing: null };
+    return { title: null, artist: null, playing: null };
   }
 }
 
 export async function getStatus() {
   const status = await checkConnected();
-  const nowPlaying = status.ok ? await getNowPlaying() : { title: null, playing: null };
+  const nowPlaying = status.ok ? await getNowPlaying() : { title: null, artist: null, playing: null };
   return { connected: status.ok, serial: status.serial || null, reason: status.reason || null, actions: listActions(), nowPlaying };
 }
 

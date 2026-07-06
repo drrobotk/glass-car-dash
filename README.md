@@ -11,14 +11,19 @@ glasses + phone battery, all visible at a glance while you drive.
 The remote side controls whatever's playing on your phone. No
 media-app-specific integration: it works by sending standard Android media
 keyevents via ADB, so it works with Spotify, YouTube Music, podcasts,
-anything — and shows the current track title when it can (best-effort, see
-[Troubleshooting](#troubleshooting)).
+anything — and shows the current track title + artist when it can
+(best-effort, see [Troubleshooting](#troubleshooting)).
 
 **Gestures:**
 - **Tap** = play/pause
 - **Swipe up** = next track
 - **Swipe down** = previous track
 - **Double-tap** = exit
+
+The phone screen isn't just a "check the glasses" placeholder — it shows a
+live preview of exactly what's on the glasses display, and the buttons
+underneath fire the same play/pause/next/previous/exit gestures, so you can
+control everything from the phone too.
 
 Actual on-device UI (captured from the official Even Hub simulator, not a
 mockup):
@@ -327,6 +332,8 @@ a daily one.
 | Boot script doesn't fire after reboot | Confirm Termux:Boot is installed AND has been opened at least once (`adb shell pm list packages \| grep termux.boot` to confirm install; if it never ran, Android's app-hibernation may have blocked it — open it manually once) |
 | Phone battery % never shows | Confirm Termux:API is installed (not just the `termux-api` package — the separate F-Droid app) and run `termux-battery-status` directly in Termux to check it returns JSON |
 | Now-playing title never shows | Best-effort only — it's parsed from `adb shell dumpsys media_session`, an undocumented debug dump, not a stable API. Some apps don't publish session metadata, and the parsing may not match every Android version/OEM. The dashboard works fine without it |
+| Now-playing takes a while to update after next/previous | An extra check fires ~1s after a successful next/previous/play-pause tap (rather than waiting for the regular 20s poll) — if the target app is slow to publish new session metadata (buffering, etc.) it can still take a moment past that |
+| Artist shown twice, or not at all | The artist is only appended if it isn't already part of the title (some apps report "Artist - Title" as one field, others report title and artist separately) — this is a heuristic over an undocumented format, not exact for every app |
 
 ## Debugging speed/limit accuracy
 
